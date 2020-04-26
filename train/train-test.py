@@ -13,7 +13,7 @@ import argparse
 
 
 # do this so we can load custom util
-sys.append("../")
+sys.path.append("../")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--in", dest="input",
