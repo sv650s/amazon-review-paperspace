@@ -1,0 +1,32 @@
+name: capstone-paperspace
+channels:
+  - defaults
+  - conda-forge
+  - anaconda
+dependencies:
+  - autopep8
+  - beautifulsoup4
+  - catboost
+  - connexion # LSTMVis
+  - coverage=4.5.3
+  - imbalanced-learn=0.4
+  - jupyter
+  - jupyter_contrib_nbextensions
+  - jupyterlab
+  - matplotlib
+  - numpy=1.18.1
+  - pandas=1.0.1
+  - pandas-datareader=0.8.1
+  - pip
+  - psutil
+  - python>=3.7.0
+  - pyyaml
+  - scikit-learn=0.22.1
+  - scipy=1.4.1
+  - seaborn
+  - tensorflow=2.0.0
+  - traceback2
+  - pip:
+    - gradient
+prefix: /Users/vinceluk/Dropbox/0_springboard/capstone-paperspace
+

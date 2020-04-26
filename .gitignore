@@ -136,3 +136,4 @@ models
 logs
 
 nltk_data/
+util/
