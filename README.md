@@ -23,9 +23,23 @@ Use the following script to traing models on gradient paperspace.
 P4000 GPU instance will be created for model training
 
 ```bash
-Usage: train.sh <sample size>
-    example: ./train.sh test # debug mode
-    example: ./train.sh 1m
+train.sh: [-b batch_size] [-c lstm_cells] [-d dropout_rate] [-e epochs] [-l log_level] [-m machine_type]
+               [-p patience] [-r recurrent_dropout_rate] <sample size>
+Parameter(s):
+  sample_size:                size of data set to train. available values: test, 50k, 100k, 200k, 500k, 1m, 2m, 4m, all
+Options:
+  -b batch size:              batch size for training. Default 32
+  -c lstm_cells:              number of LSTM cells used for training. Default 128
+  -d dropout_rate:            dropout rate for LSTM network. Default 0
+  -e epochs:                  max number of epochs for training. Default 20
+  -l log_level:               log level for logging. Default INFO
+  -m machine_type:            Gradient machine type. Options C3 (CPU) or P4000 (GPU). Default P4000
+  -p patience:                patience for early stopping. Default 4
+  -r recurrent_dropout_rate:  recurrent dropout rate for LSTM cells. Default 0
+Example:
+  ./train.sh test # DEBUG MODE
+  ./train.sh 1m
+  ./train.sh -e 40 -d 0.2 1m
 ```
 
 ## Artifacts

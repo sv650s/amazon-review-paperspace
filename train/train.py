@@ -33,11 +33,6 @@ import os
 import logging
 import argparse
 
-# this allows us to import util directory from the root of project
-import sys
-# sys.path.append('../')
-print("import sys 2")
-
 
 import util.keras_util as ku
 import util.report_util as ru
@@ -49,9 +44,7 @@ TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 # length of our embedding - 300 is standard
 EMBED_SIZE = 300
-BATCH_SIZE = 32
 LEARNING_RATE = 0.01
-DROPOUT_RATE = 0.2
 
 # From EDA, we know that 90% of review bodies have 100 words or less,
 # we will use this as our sequence length
@@ -252,6 +245,11 @@ if __name__ == "__main__":
                         default="/artifacts")
 
 
+    parser.add_argument("-d", "--dropout_rate", help="dropout rate. Default 0",
+                        default=0)
+    parser.add_argument("-r", "--recurrent_dropout_rate", help="recurrent dropout rate. NOTE: will not be able to " \
+            "cuDNN if this is set. Default 0",
+                        default=0)
     parser.add_argument("-f", "--feature_column", help="feature column. Default review_body",
                         default="review_body")
     parser.add_argument("-t", "--truth_label_column", help="label column. Default star_rating",
@@ -262,6 +260,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--patience", help="patience. Default = 4", default=4)
     parser.add_argument("-c", "--lstm_cells", help="Number of LSTM cells. Default = 128", default=128)
     parser.add_argument("-e", "--epochs", help="Max number epochs. Default = 20", default=20)
+    parser.add_argument("-b", "--batch_size", help="Training batch size. Default = 32", default=32)
 
     parser.add_argument("-l", "--loglevel", help="log level", default="INFO")
 
@@ -284,9 +283,15 @@ if __name__ == "__main__":
     output_dir = args.output_dir
     label_column = args.truth_label_column
     feature_column = args.feature_column
-    lstm_cells = args.lstm_cells
-    epochs  = args.epochs
     sample_size = args.sample_size
+
+    lstm_cells = int(args.lstm_cells)
+    epochs  = int(args.epochs)
+    batch_size = int(args.batch_size)
+    patience = int(args.patience)
+
+    dropout_rate = float(args.dropout_rate)
+    recurrent_dropout_rate = float(args.recurrent_dropout_rate)
 
 
     data_dir = f'{input_dir}/amazon_reviews'
@@ -302,17 +307,18 @@ if __name__ == "__main__":
     # process argument
     if debug:
         loglevel = logging.DEBUG
-        epoch = 1
+        # override parameters to make testing faster
+        epochs = 1
+        lstm_cells = 16
     elif args.loglevel is not None:
         loglevel = getattr(logging, args.loglevel.upper(), None)
     logging.basicConfig(format=LOG_FORMAT, level=loglevel)
     logger = logging.getLogger(__name__)
 
     model_name = f"LSTMB{lstm_cells}"
-    ARCHITECTURE = f"1x{lstm_cells}"
+    architecture = f"1x{lstm_cells}"
     DESCRIPTION = f"1 Layer {lstm_cells} LSTM Units, No Dropout, GloVe Embedding (with stop words, nonlemmatized), Balanced Weights"
     FEATURE_SET_NAME = "glove_with_stop_nonlemmatized"
-    PATIENCE = 4
     REPORT_FILE = "paperspace-glove_embedding_with_stop_nonlemmatized-dl_prototype-report.csv"
 
     if debug:
@@ -329,13 +335,28 @@ if __name__ == "__main__":
     EMBEDDING_FILE = f'{embeddings_dir}/glove.840B.300d.txt'
 
 
-    logger.info(f"input_dir: {input_dir}")
-    logger.info(f"output_dir: {output_dir}")
-    logger.info(f"reports_dir: {reports_dir}")
-    logger.info(f"models_dir: {models_dir}")
-    logger.info(f"model_name: {model_name}")
-    logger.info(f"data_file: {data_file}")
-
+    summary = f'\nParameters:\n' \
+              f'\tinput_dir:\t\t\t{input_dir}\n' \
+              f'\toutput_dir:\t\t\t{output_dir}\n' \
+              f'\tdata_file:\t\t\t{data_file}\n' \
+              f'\tlabel_column:\t\t\t{label_column}\n' \
+              f'\tfeature_column:\t\t\t{feature_column}\n' \
+              f'\tsample_size:\t\t\t{sample_size}\n' \
+              f'\nEmbedding Info:\n' \
+              f'\tFEATURE_SET_NAME:\t\t{FEATURE_SET_NAME}\n' \
+              f'\tEMBED_SIZE:\t\t\t{EMBED_SIZE}\n' \
+              f'\tMAX_SEQUENCE_LENGTH:\t\t{MAX_SEQUENCE_LENGTH}\n' \
+              f'\tEMBEDDING_FILE:\t\t\t{EMBEDDING_FILE}\n' \
+              f'\nModel Info:\n' \
+              f'\tmodel_name:\t\t\t{model_name}\n' \
+              f'\tlstm_cells:\t\t\t{lstm_cells}\n' \
+              f'\tLEARNING_RATE:\t\t\t{LEARNING_RATE}\n' \
+              f'\tpatience:\t\t\t{patience}\n' \
+              f'\tepochs:\t\t\t\t{epochs}\n' \
+              f'\tbatch_size:\t\t\t{batch_size}\n' \
+              f'\tdropout_rate:\t\t\t{dropout_rate}\n' \
+              f'\trecurrent_dropout_rate:\t\t{recurrent_dropout_rate}\n'
+    print(summary)
 
     ##### validate that we have the correct directories before we start
     if os.path.exists(input_dir):
@@ -376,7 +397,7 @@ if __name__ == "__main__":
                                 input_length=MAX_SEQUENCE_LENGTH,
                                 trainable=False))
     # model.add(Embedding(input_dim=vocab_size, output_dim=EMBED_SIZE, input_length=MAX_SEQUENCE_LENGTH))
-    model.add(LSTM(lstm_cells, recurrent_dropout=DROPOUT_RATE))
+    model.add(LSTM(lstm_cells, dropout=dropout_rate, recurrent_dropout=recurrent_dropout_rate))
     model.add(Dense(5, activation="softmax"))
 
     model.compile(loss="categorical_crossentropy", optimizer=Adam(learning_rate=0.001),
@@ -389,7 +410,7 @@ if __name__ == "__main__":
                                   restore_best_weights=True)
 
     early_stop = EarlyStopping(monitor='val_loss',
-                               patience=PATIENCE,
+                               patience=patience,
                                verbose=1,
                                restore_best_weights=True)
 
@@ -403,7 +424,7 @@ if __name__ == "__main__":
 
     mw = ku.ModelWrapper(model,
                          model_name,
-                         ARCHITECTURE,
+                         architecture,
                          FEATURE_SET_NAME,
                          label_column,
                          feature_column,
@@ -413,12 +434,12 @@ if __name__ == "__main__":
                          description=DESCRIPTION)
 
     network_history = mw.fit(X_train, y_train,
-                          batch_size=BATCH_SIZE,
-                          epochs=epochs,
-                          verbose=1,
-                          validation_split=0.2,
-                          class_weight=weights_dict,
-                          callbacks=[early_stop, reduce_lr])
+                             batch_size=batch_size,
+                             epochs=epochs,
+                             verbose=1,
+                             validation_split=0.2,
+                             class_weight=weights_dict,
+                             callbacks=[early_stop, reduce_lr])
 
     scores = mw.evaluate(X_test, y_test)
     print("Accuracy: %.2f%%" % (mw.scores[1]*100))
@@ -435,7 +456,8 @@ if __name__ == "__main__":
     # fig = plt.figure(figsize=(5,5))
     # pu.plot_roc_auc(mw.model_name, mw.roc_auc, mw.fpr, mw.tpr)
 
-    print(f'Score: {ru.calculate_metric(mw.crd)}')
+    custom_score = ru.calculate_metric(mw.crd)
+    print(f'Custom Score: {custom_score}')
 
     """**Save off various files**"""
 
@@ -445,7 +467,8 @@ if __name__ == "__main__":
 
     model_loaded = load_model(mw.model_file)
     scores = model_loaded.evaluate(X_test, y_test, verbose=1)
-    print("Accuracy: %.2f%%" % (scores[1]*100))
+    accuracy = scores[1] * 100
+    print("Accuracy: %.2f%%" % (accuracy))
 
     # this takes too long for real models
     if debug == True:
@@ -460,4 +483,8 @@ if __name__ == "__main__":
       print(confusion_matrix(y_test_unencoded, y_predict_unencoded))
 
     end_time = datetime.now()
+    print(f'Finished training {summary}')
+    print("Accuracy: %.2f%%" % (accuracy))
+    print("Custom Score: %.2f%%" % (custom_score))
+    print(f'Report filename: {ku.ModelWrapper.get_report_file_name(output_dir, use_date=False)}')
     print(f'Star Time: {start_time } End time: {end_time} Total Duration: {round((end_time - start_time).total_seconds() / 60, 2)} mins')
