@@ -3,7 +3,7 @@
 # files from util are ignored by git so we don't check them in in both places
 
 UTIL_ORIG="../capstone/util"
-UTIL_DEST="util"
+UTIL_DEST="train/util"
 
 # check to see if original capstone repo exists
 if [ ! -d ${UTIL_ORIG} ]; then

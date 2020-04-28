@@ -33,15 +33,16 @@ import os
 import logging
 import argparse
 
+# this allows us to import util directory from the root of project
+import sys
+# sys.path.append('../')
+print("import sys 2")
+
 
 import util.keras_util as ku
 import util.report_util as ru
 
 import random
-
-# this allows us to import util directory from the root of project
-import sys
-sys.path.append('../')
 
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
@@ -89,6 +90,7 @@ def check_resources():
 
 
 def fix_seed(seed: int):
+    logger.info(f"Fixing rando seed to {seed}")
 
     # fix random seeds
     tf.compat.v1.reset_default_graph()
@@ -97,23 +99,52 @@ def fix_seed(seed: int):
     np.random.seed(seed)
 
 def load_data(data_file: str, feature_column:str, label_column: str):
+    """
+    Loads data file
+    OHE labelcolumn
+    split features and labels into train and test set
+
+    :param data_file:
+    :param feature_column:
+    :param label_column:
+    :return:
+    """
+    logger.info(f'Reading data file: {data_file} feature_column: {feature_column} label_column: {label_column}')
 
     df = pd.read_csv(data_file)
     reviews = df[feature_column]
-    rating = df[label_column]
+    ratings = df[label_column]
 
     # pre-process our lables
     # one hot encode our star ratings since Keras/TF requires this for the labels
-    y = OneHotEncoder().fit_transform(rating.values.reshape(len(rating), 1)).toarray()
+    y = OneHotEncoder().fit_transform(ratings.values.reshape(len(ratings), 1)).toarray()
 
 
     # split our data into train and test sets
     reviews_train, reviews_test, y_train, y_test = train_test_split(reviews, y, random_state=1)
 
-    return reviews_train, reviews_test, y_train, y_test
+    logger.debug(f'features dimensions - train {np.shape(reviews_train)} test {np.shape(reviews_test)}')
+    logger.debug(f'label dimensions - train {np.shape(y_train)} test {np.shape(y_test)}')
 
-def preprocess_data(feature_train, feature_test, embedding_file: str):
+    return reviews_train, reviews_test, y_train, y_test, ratings
 
+def preprocess_data(feature_train, feature_test, embedding_file: str, missing_words_file: str):
+    """
+    Tokenize text and convert features into embedding matrix
+
+    Pre-trained embedding will be converted into an index file in the same directory as embedding file
+    This index file will be loaded instead of the embedding file to save time
+
+    :param feature_train: training feature set
+    :param feature_test: test feature set
+    :param embedding_file: full path name of pre-trained embedding file
+    :param missing_words_file: full path name to store missing words csv file
+    :return:
+        X_train, X_test, t, embedding_matrix
+    """
+    logger.info(f'feature train dimensions {np.shape(feature_train)} feature test dimensions {np.shape(feature_test)}')
+
+    logger.info("Tokenizing features...")
     # Pre-process our features (review body)
     t = Tokenizer(oov_token="<UNK>")
     # fit the tokenizer on the documents
@@ -134,30 +165,32 @@ def preprocess_data(feature_train, feature_test, embedding_file: str):
 
     """## Load our pre-trained embedding
 
-    embeddings_index will be a map where key == word, value == the embedding vector
+    embedding_index will be a map where key == word, value == the embedding vector
     """
 
-    EMBEDDING_INDEX_FILE = f'{output_dir}/models/glove.840B.300d-embedding_index'
+    embedding_dir = os.path.dirname(embedding_file)
+    embedding_index_file = f'{embedding_dir}/glove.840B.300d-embedding_index'
 
-    embeddings_index = {}
+    embedding_index = {}
 
-    if os.path.exists(f'{EMBEDDING_INDEX_FILE}.npy'):
-      print(f'Loading {EMBEDDING_INDEX_FILE}.npy')
-      embeddings_index = np.load(f'{EMBEDDING_INDEX_FILE}.npy',
+    logger.info("Creating embedding index...")
+    if os.path.exists(f'{embedding_index_file}.npy'):
+      logger.info(f'Loading {embedding_index_file}.npy')
+      embedding_index = np.load(f'{embedding_index_file}.npy',
                                  allow_pickle = True).item()
     else:
-      print('Indexing word vectors.')
+      logging.info(f'{embedding_index_file} does not exist. Indexing words from {embedding_file}...')
 
       with open(embedding_file) as f:
           for line in f:
               word, coefs = line.split(maxsplit=1)
               coefs = np.fromstring(coefs, 'f', sep=' ')
-              embeddings_index[word] = coefs
-      np.save(EMBEDDING_INDEX_FILE, embeddings_index)
+              embedding_index[word] = coefs
+      logging.info(f'Saving embedding index to {embedding_index_file}...')
+      np.save(embedding_index_file, embedding_index)
 
-    print(type(embeddings_index))
-    print(np.shape(embeddings_index))
-    print('Found %s word vectors.' % len(embeddings_index))
+    logger.debug(f'embedding_index type {type(embedding_index)} shape {np.shape(embedding_index)}')
+    logger.info('Found %s word vectors.' % len(embedding_index))
 
 
 
@@ -174,18 +207,16 @@ def preprocess_data(feature_train, feature_test, embedding_file: str):
     word_index = t.word_index
     print(f'word_index length: {len(word_index)}')
 
-    # we are going to use the entire vocab so we can alter this from the example
-    # num_words = min(MAX_NUM_WORDS, len(word_index) + 1)
-
     # start with a matrix of 0's
     embedding_matrix = np.zeros((len(word_index) + 1, EMBED_SIZE))
+    logger.debug(f'embedding_matrix shape: {np.shape(embedding_matrix)}')
 
     # if a word doesn't exist in our vocabulary, let's save it off
+    logger.info("Creating embedding matrix from embedding index...")
     missing_words = []
-    print(f'embedding_matrix shape: {np.shape(embedding_matrix)}')
     for word, i in word_index.items():
         # print(f'word: {word} i: {i}')
-        embedding_vector = embeddings_index.get(word)
+        embedding_vector = embedding_index.get(word)
         if embedding_vector is not None and np.shape(embedding_vector)[0] == EMBED_SIZE:
             # words not found in embedding index will be all-zeros.
             # print(f'i: {i} embedding_vector shape: {np.shape(embedding_vector)}')
@@ -199,9 +230,8 @@ def preprocess_data(feature_train, feature_test, embedding_file: str):
 
     # save missing words into a file so we can analyze it later
     missing_words_df = pd.DataFrame(missing_words)
-    missing_words_df.to_csv(MISSING_WORDS_FILE, index=False)
-
-    """**Build LSTM Model Architecture**"""
+    logger.info("Saving missing words file...")
+    missing_words_df.to_csv(missing_words_file, index=False)
 
     return X_train, X_test, t, embedding_matrix
 
@@ -209,27 +239,23 @@ def preprocess_data(feature_train, feature_test, embedding_file: str):
 
 if __name__ == "__main__":
 
+    start_time = datetime.now()
+
     check_resources()
     fix_seed(RANDOM_SEED)
 
     parser = argparse.ArgumentParser()
 
-    # TODO: parameterize entire training
-    # parser.add_argument("datafile", help="source data file")
-    parser.add_argument("-i", "--input_dir", help="input directory. Default /storage",
-                        default="/storage")
+    parser.add_argument("-i", "--input_dir", help="input directory. Default /storage/data",
+                        default="/storage/data")
     parser.add_argument("-o", "--output_dir", help="output directory. Default /artifacts",
                         default="/artifacts")
-    # parser.add_argument("-m", "--modeldir", help="output directory. Default /artifacts/models",
-    #                     default="/artifacts/models")
-    # parser.add_argument("-r", "--reportdir", help="report directory. Default /artifacts/reports",
-    #                     default="/artifacts/reports")
 
 
-    parser.add_argument("-f", "--feature_column", help="feature column. Default star_rating",
-                        default="star_rating")
-    parser.add_argument("-l", "--label_column", help="label column. Default label_column",
+    parser.add_argument("-f", "--feature_column", help="feature column. Default review_body",
                         default="review_body")
+    parser.add_argument("-t", "--truth_label_column", help="label column. Default star_rating",
+                        default="star_rating")
 
     parser.add_argument("-s", "--sample_size", help="Sample size (ie, 50k). Default test",
                         default="test")
@@ -238,9 +264,6 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--epochs", help="Max number epochs. Default = 20", default=20)
 
     parser.add_argument("-l", "--loglevel", help="log level", default="INFO")
-
-    # parser.add_argument("-d", "--debug", action='store_true',
-    #                     help="debug mode", default=False)
 
 
     # get command line arguments
@@ -255,55 +278,91 @@ if __name__ == "__main__":
 
 
 
-    parser = argparse()
 
-    # process argument
-    if args.loglevel is not None:
-        loglevel = getattr(logging, args.loglevel.upper(), None)
-    logging.basicConfig(format=LOG_FORMAT, level=loglevel)
-    logger = logging.getLogger(__name__)
 
     input_dir = args.input_dir
     output_dir = args.output_dir
-    label_column = args.label_column
+    label_column = args.truth_label_column
     feature_column = args.feature_column
     lstm_cells = args.lstm_cells
     epochs  = args.epochs
     sample_size = args.sample_size
 
 
+    data_dir = f'{input_dir}/amazon_reviews'
+    embeddings_dir = f'{input_dir}/embeddings'
+    reports_dir = f'{output_dir}/reports'
+    models_dir = f'{output_dir}/models'
+
     debug = False
     if sample_size == "test":
+        print("Running in DEBUG mode")
         debug = True
 
+    # process argument
+    if debug:
+        loglevel = logging.DEBUG
+        epoch = 1
+    elif args.loglevel is not None:
+        loglevel = getattr(logging, args.loglevel.upper(), None)
+    logging.basicConfig(format=LOG_FORMAT, level=loglevel)
+    logger = logging.getLogger(__name__)
 
-    MODEL_NAME = f"LSTMB{lstm_cells}"
+    model_name = f"LSTMB{lstm_cells}"
     ARCHITECTURE = f"1x{lstm_cells}"
     DESCRIPTION = f"1 Layer {lstm_cells} LSTM Units, No Dropout, GloVe Embedding (with stop words, nonlemmatized), Balanced Weights"
     FEATURE_SET_NAME = "glove_with_stop_nonlemmatized"
     PATIENCE = 4
+    REPORT_FILE = "paperspace-glove_embedding_with_stop_nonlemmatized-dl_prototype-report.csv"
 
     if debug:
-      data_file = f'{input_dir}/data/amazon_reviews_us_Wireless_v1_00-test-preprocessed.csv'
-      MODEL_NAME = f'test-{MODEL_NAME}'
-      MISSING_WORDS_FILE = f'{output_dir}/reports/glove_embedding-missing_words-test.csv'
+      data_file = f'{data_dir}/amazon_reviews_us_Wireless_v1_00-test-with_stop_nonlemmatized-preprocessed.csv'
+      model_name = f'test-{model_name}'
+      MISSING_WORDS_FILE = f'{reports_dir}/glove_embedding-missing_words-test.csv'
+      ku.ModelWrapper.set_report_filename(f'test-{REPORT_FILE}')
     else:
-      data_file = f"{input_dir}/data/amazon_reviews_us_Wireless_v1_00-{sample_size}-with_stop_nonlemmatized-preprocessed.csv"
-      MISSING_WORDS_FILE = f'{output_dir}/reports/glove_embedding-missing_words-{sample_size}.csv'
-      # TODO: parameterize this later
-      ku.ModelWrapper.set_report_filename('glove_embedding_with_stop_nonlemmatized-dl_prototype-report.csv')
+      data_file = f"{data_dir}/amazon_reviews_us_Wireless_v1_00-{sample_size}-with_stop_nonlemmatized-preprocessed.csv"
+      MISSING_WORDS_FILE = f'{reports_dir}/glove_embedding-missing_words-{sample_size}.csv'
+      ku.ModelWrapper.set_report_filename(REPORT_FILE)
 
 
-    EMBEDDING_FILE = f'{input_dir}/data/embeddings/glove.840B.300d.txt'
+    EMBEDDING_FILE = f'{embeddings_dir}/glove.840B.300d.txt'
 
 
-    ku.ModelWrapper.set_reports_dir(f'{output_dir}/reports')
-    ku.ModelWrapper.set_models_dir(f'{output_dir}/models')
+    logger.info(f"input_dir: {input_dir}")
+    logger.info(f"output_dir: {output_dir}")
+    logger.info(f"reports_dir: {reports_dir}")
+    logger.info(f"models_dir: {models_dir}")
+    logger.info(f"model_name: {model_name}")
+    logger.info(f"data_file: {data_file}")
 
 
-    reviews_train, reviews_test, y_train, y_test = load_data(data_file, feature_column, label_column)
+    ##### validate that we have the correct directories before we start
+    if os.path.exists(input_dir):
+        if not os.path.exists(f'{embeddings_dir}'):
+            os.mkdir(f'{embeddings_dir}')
+    else:
+        logger.error(f'ERROR: {input_dir} does not exist')
+        exit(1)
 
-    X_train, X_test, t, embedding_matrix = preprocess_data(reviews_train, reviews_test, EMBEDDING_FILE)
+    if os.path.exists(output_dir):
+        if not os.path.exists(f'{reports_dir}'):
+            logger.info(f'{reports_dir} missing. Creating...')
+            os.mkdir(f'{reports_dir}')
+        if not os.path.exists(f'{models_dir}'):
+            logger.info(f'{models_dir} missing. Creating...')
+            os.mkdir(f'{models_dir}')
+    else:
+        logger.error(f'ERROR: {output_dir} does not exist')
+        exit(1)
+
+
+    reviews_train, reviews_test, y_train, y_test, ratings = load_data(data_file, feature_column, label_column)
+
+    X_train, X_test, t, embedding_matrix = preprocess_data(reviews_train,
+                                                           reviews_test,
+                                                           EMBEDDING_FILE,
+                                                           MISSING_WORDS_FILE)
 
     vocab_size = len(t.word_index)+1
 
@@ -334,15 +393,16 @@ if __name__ == "__main__":
                                verbose=1,
                                restore_best_weights=True)
 
-    weights = compute_class_weight('balanced', np.arange(1, 6), y_train)
+    logger.debug(f'y_train: {y_train[:5]} ratings {ratings[:5]}')
+    weights = compute_class_weight('balanced', np.arange(1, 6), ratings)
     weights_dict = {i: weights[i] for i in np.arange(0, len(weights))}
-    print(f'class weights: {weights}')
-    print(f'class weights_dict: {weights_dict}')
+    logger.info(f'class weights: {weights}')
+    logger.info(f'class weights_dict: {weights_dict}')
 
 
 
     mw = ku.ModelWrapper(model,
-                         MODEL_NAME,
+                         model_name,
                          ARCHITECTURE,
                          FEATURE_SET_NAME,
                          label_column,
@@ -399,4 +459,5 @@ if __name__ == "__main__":
       # confusion matrix
       print(confusion_matrix(y_test_unencoded, y_predict_unencoded))
 
-    print(datetime.now())
+    end_time = datetime.now()
+    print(f'Star Time: {start_time } End time: {end_time} Total Duration: {round((end_time - start_time).total_seconds() / 60, 2)} mins')
