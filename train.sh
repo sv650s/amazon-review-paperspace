@@ -32,15 +32,15 @@ fi
 
 
 MACHINE_TYPE="P4000"
-while getopts :b:c:d:e:l:m:p:r: name
+while getopts :b:c:d:e:l:m:p:r: o
    do
-     case $name in
+     case $o in
         b) BATCH_SIZE="$OPTARG" ;;
         c) LSTM_CELLS="$OPTARG" ;;
         d) DROPOUT_RATE="$OPTARG" ;;
         e) EPOCHS="$OPTARG" ;;
         l) LOG_LEVEL="$OPTARG" ;;
-        l) MACHINE_TYPE="$OPTARG" ;;
+        m) MACHINE_TYPE="$OPTARG" ;;
         p) PATIENCE="$OPTARG" ;;
         r) RECURRENT_DROPOUT_RATE="$OPTARG" ;;
         *) usage && exit 0 ;;                     # display usage and exit
@@ -49,6 +49,7 @@ while getopts :b:c:d:e:l:m:p:r: name
 
 shift $((OPTIND-1))
 sample_size=$1
+echo "Sample size: ${sample_size}"
 
 if [ "x${BATCH_SIZE}" == "x" ]; then
     BATCH_SIZE_OPT=""
@@ -75,6 +76,11 @@ if [ "x${LOG_LEVEL}" == "x" ]; then
 else
     LOG_LEVEL_OPT="-l ${LOG_LEVEL}"
 fi
+if [ "x${MACHINE_TYPE}" == "x" ]; then
+    MACHINE_TYPE_OPT=""
+else
+    MACHINE_TYPE_OPT="-m ${MACHINE_TYPE}"
+fi
 if [ "x${PATIENCE}" == "x" ]; then
     PATIENCE_OPT=""
 else
@@ -95,7 +101,7 @@ gradient experiments run singlenode \
     --projectId pr1cl53bg \
     --machineType ${MACHINE_TYPE} \
     --container vtluk/paperspace-tf-gpu:1.0 \
-    --command "python train/train.py -i /storage -o /artifacts -s ${sample_size} ${BATCH_SIZE_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT}" \
+    --command "python train/train.py -i /storage -o /artifacts ${BATCH_SIZE_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT} ${sample_size}" \
     --workspace .
 
 

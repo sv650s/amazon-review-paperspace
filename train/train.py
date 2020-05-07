@@ -255,8 +255,11 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--truth_label_column", help="label column. Default star_rating",
                         default="star_rating")
 
-    parser.add_argument("-s", "--sample_size", help="Sample size (ie, 50k). Default test",
-                        default="test")
+    parser.add_argument("-n", "--bidirectional",
+                        help="label column. Default star_rating",
+                        default=False,
+                        action="store_true")
+
     parser.add_argument("-p", "--patience", help="patience. Default = 4", default=4)
     parser.add_argument("-c", "--lstm_cells", help="Number of LSTM cells. Default = 128", default=128)
     parser.add_argument("-e", "--epochs", help="Max number epochs. Default = 20", default=20)
@@ -264,6 +267,10 @@ if __name__ == "__main__":
 
     parser.add_argument("-l", "--loglevel", help="log level", default="INFO")
 
+    # POSITIONAL ARGUMENTS
+    parser.add_argument("sample_size",
+                        help="Sample size (ie, 50k, test)",
+                        type=str)
 
     # get command line arguments
     args = parser.parse_args()
@@ -292,6 +299,8 @@ if __name__ == "__main__":
 
     dropout_rate = float(args.dropout_rate)
     recurrent_dropout_rate = float(args.recurrent_dropout_rate)
+
+    bidirectional = args.bidirectional
 
 
     data_dir = f'{input_dir}/amazon_reviews'
@@ -358,6 +367,8 @@ if __name__ == "__main__":
               f'\trecurrent_dropout_rate:\t\t{recurrent_dropout_rate}\n'
     print(summary)
 
+
+
     ##### validate that we have the correct directories before we start
     if os.path.exists(input_dir):
         if not os.path.exists(f'{embeddings_dir}'):
@@ -387,23 +398,23 @@ if __name__ == "__main__":
 
     vocab_size = len(t.word_index)+1
 
-    # building our network
-    model = Sequential()
-    # load pre-trained word embeddings into an Embedding layer
-    # note that we set trainable = False so as to keep the embeddings fixed
-    model.add(Embedding(input_dim=vocab_size,
-                                output_dim=EMBED_SIZE,
-                                embeddings_initializer=Constant(embedding_matrix),
-                                input_length=MAX_SEQUENCE_LENGTH,
-                                trainable=False))
-    # model.add(Embedding(input_dim=vocab_size, output_dim=EMBED_SIZE, input_length=MAX_SEQUENCE_LENGTH))
-    model.add(LSTM(lstm_cells, dropout=dropout_rate, recurrent_dropout=recurrent_dropout_rate))
-    model.add(Dense(5, activation="softmax"))
-
-    model.compile(loss="categorical_crossentropy", optimizer=Adam(learning_rate=0.001),
-                  metrics=["categorical_accuracy"])
-
-    print(model.summary())
+    # # building our network
+    # model = Sequential()
+    # # load pre-trained word embeddings into an Embedding layer
+    # # note that we set trainable = False so as to keep the embeddings fixed
+    # model.add(Embedding(input_dim=vocab_size,
+    #                             output_dim=EMBED_SIZE,
+    #                             embeddings_initializer=Constant(embedding_matrix),
+    #                             input_length=MAX_SEQUENCE_LENGTH,
+    #                             trainable=False))
+    # # model.add(Embedding(input_dim=vocab_size, output_dim=EMBED_SIZE, input_length=MAX_SEQUENCE_LENGTH))
+    # model.add(LSTM(lstm_cells, dropout=dropout_rate, recurrent_dropout=recurrent_dropout_rate))
+    # model.add(Dense(5, activation="softmax"))
+    #
+    # model.compile(loss="categorical_crossentropy", optimizer=Adam(learning_rate=0.001),
+    #               metrics=["categorical_accuracy"])
+    #
+    # print(model.summary())
 
     # reduce learning rate if we sense a plateau
     reduce_lr = ReduceLROnPlateau(monitor='val_loss',
@@ -422,18 +433,46 @@ if __name__ == "__main__":
 
 
 
-    mw = ku.ModelWrapper(model,
-                         model_name,
-                         architecture,
-                         FEATURE_SET_NAME,
-                         label_column,
-                         feature_column,
-                         data_file,
-                         embed_size=EMBED_SIZE,
-                         tokenizer=t,
-                         description=DESCRIPTION)
+    # mw = ku.ModelWrapper(model,
+    #                      model_name,
+    #                      architecture,
+    #                      FEATURE_SET_NAME,
+    #                      label_column,
+    #                      feature_column,
+    #                      data_file,
+    #                      embed_size=EMBED_SIZE,
+    #                      tokenizer=t,
+    #                      description=DESCRIPTION)
+    mw = ku.LSTM1LayerModelWrapper(
+                            lstm_cells, # LSTM dim - LSTM1LyerModelWrapper
+                             dropout_rate, # dropout rate - LSTM1LyerModelWrapper
+                             recurrent_dropout_rate, # recurrent dropout rate - LSTM1LyerModelWrapper
+                             bidirectional, # bidirectional - LSTM1LyerModelWrapper
+                             vocab_size,       # vocab size - EmbeddingModelWrapper
+                             MAX_SEQUENCE_LENGTH, # max sequence length - EmbeddingModelWrapper
+                             EMBED_SIZE, # embed size - EmbeddingModelWrapper
+                            model_name, # model name - ModelWrapper
+                            architecture, # architecture - ModelWrapper
+                            FEATURE_SET_NAME, # feature_set_name - ModelWrapper
+                            label_column, # label_column - ModelWrapper
+                            feature_column, # feature_column - ModelWrapper
+                            data_file, # data file - ModelWrapper
+                            tokenizer = t, # tokenizer - ModelWrapper
+                            description = DESCRIPTION, #description - ModelWrapper
+                            learning_rate = LEARNING_RATE, # learning rate - ModelWrapper
+                            optimizer = Adam(learning_rate = LEARNING_RATE)
+    )
 
-    network_history = mw.fit(X_train, y_train,
+    # mw = ku.LSTM1LayerModelWrapper(lstm_cells,
+    #                          dropout_rate,
+    #                          recurrent_dropout_rate,
+    #                          False, # bidirectional
+    #                          vocab_size,
+    #                          MAX_SEQUENCE_LENGTH,
+    #                          EMBED_SIZE)
+
+    network_history = mw.fit(X_train,
+                             y_train,
                              batch_size=batch_size,
                              epochs=epochs,
                              verbose=1,
@@ -441,8 +480,9 @@ if __name__ == "__main__":
                              class_weight=weights_dict,
                              callbacks=[early_stop, reduce_lr])
 
-    scores = mw.evaluate(X_test, y_test)
-    print("Accuracy: %.2f%%" % (mw.scores[1]*100))
+    mw.evaluate(X_test, y_test)
+    print("Train Accuracy: %.2f%%" % (mw.train_scores[1]*100))
+    print("Test Accuracy: %.2f%%" % (mw.scores[1]*100))
 
     # pu.plot_network_history(mw.network_history, "categorical_accuracy", "val_categorical_accuracy")
     # plt.show()
@@ -465,6 +505,7 @@ if __name__ == "__main__":
 
     """# Test That Our Models Saved Correctly"""
 
+    print("Reloading model for testing...")
     model_loaded = load_model(mw.model_file)
     scores = model_loaded.evaluate(X_test, y_test, verbose=1)
     accuracy = scores[1] * 100
@@ -483,7 +524,7 @@ if __name__ == "__main__":
       print(confusion_matrix(y_test_unencoded, y_predict_unencoded))
 
     end_time = datetime.now()
-    print(f'Finished training {summary}')
+    print(f'Finished training {mw}')
     print("Accuracy: %.2f%%" % (accuracy))
     print("Custom Score: %.2f%%" % (custom_score))
     print(f'Report filename: {ku.ModelWrapper.get_report_file_name(output_dir, use_date=False)}')
