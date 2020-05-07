@@ -324,9 +324,14 @@ if __name__ == "__main__":
     logging.basicConfig(format=LOG_FORMAT, level=loglevel)
     logger = logging.getLogger(__name__)
 
-    model_name = f"LSTMB{lstm_cells}"
+    if bidirectional:
+        model_name = f"biLSTMB{lstm_cells}"
+        DESCRIPTION = f"1 Layer {lstm_cells} biLSTM Units, Dropout {dropout_rate}, Recurrent Dropout {recurrent_dropout_rate}, Batch Size {batch_size}, Learning Rate {LEARNING_RATE}"
+    else:
+        model_name = f"LSTMB{lstm_cells}"
+        DESCRIPTION = f"1 Layer {lstm_cells} LSTM Units, Dropout {dropout_rate}, Recurrent Dropout {recurrent_dropout_rate}, Batch Size {batch_size}, Learning Rate {LEARNING_RATE}"
+
     architecture = f"1x{lstm_cells}"
-    DESCRIPTION = f"1 Layer {lstm_cells} LSTM Units, No Dropout, GloVe Embedding (with stop words, nonlemmatized), Balanced Weights"
     FEATURE_SET_NAME = "glove_with_stop_nonlemmatized"
     REPORT_FILE = "paperspace-glove_embedding_with_stop_nonlemmatized-dl_prototype-report.csv"
 
@@ -398,25 +403,6 @@ if __name__ == "__main__":
 
     vocab_size = len(t.word_index)+1
 
-    # # building our network
-    # model = Sequential()
-    # # load pre-trained word embeddings into an Embedding layer
-    # # note that we set trainable = False so as to keep the embeddings fixed
-    # model.add(Embedding(input_dim=vocab_size,
-    #                             output_dim=EMBED_SIZE,
-    #                             embeddings_initializer=Constant(embedding_matrix),
-    #                             input_length=MAX_SEQUENCE_LENGTH,
-    #                             trainable=False))
-    # # model.add(Embedding(input_dim=vocab_size, output_dim=EMBED_SIZE, input_length=MAX_SEQUENCE_LENGTH))
-    # model.add(LSTM(lstm_cells, dropout=dropout_rate, recurrent_dropout=recurrent_dropout_rate))
-    # model.add(Dense(5, activation="softmax"))
-    #
-    # model.compile(loss="categorical_crossentropy", optimizer=Adam(learning_rate=0.001),
-    #               metrics=["categorical_accuracy"])
-    #
-    # print(model.summary())
-
-    # reduce learning rate if we sense a plateau
     reduce_lr = ReduceLROnPlateau(monitor='val_loss',
                                   restore_best_weights=True)
 
@@ -433,16 +419,6 @@ if __name__ == "__main__":
 
 
 
-    # mw = ku.ModelWrapper(model,
-    #                      model_name,
-    #                      architecture,
-    #                      FEATURE_SET_NAME,
-    #                      label_column,
-    #                      feature_column,
-    #                      data_file,
-    #                      embed_size=EMBED_SIZE,
-    #                      tokenizer=t,
-    #                      description=DESCRIPTION)
     mw = ku.LSTM1LayerModelWrapper(
                             lstm_cells, # LSTM dim - LSTM1LyerModelWrapper
                              dropout_rate, # dropout rate - LSTM1LyerModelWrapper
@@ -460,16 +436,8 @@ if __name__ == "__main__":
                             tokenizer = t, # tokenizer - ModelWrapper
                             description = DESCRIPTION, #description - ModelWrapper
                             learning_rate = LEARNING_RATE, # learning rate - ModelWrapper
-                            optimizer = Adam(learning_rate = LEARNING_RATE)
+                            optimizer = "Adam"
     )
-
-    # mw = ku.LSTM1LayerModelWrapper(lstm_cells,
-    #                          dropout_rate,
-    #                          recurrent_dropout_rate,
-    #                          False, # bidirectional
-    #                          vocab_size,
-    #                          MAX_SEQUENCE_LENGTH,
-    #                          EMBED_SIZE)
 
     network_history = mw.fit(X_train,
                              y_train,
@@ -482,21 +450,21 @@ if __name__ == "__main__":
 
     mw.evaluate(X_test, y_test)
     print("Train Accuracy: %.2f%%" % (mw.train_scores[1]*100))
-    print("Test Accuracy: %.2f%%" % (mw.scores[1]*100))
+    print("Test Accuracy: %.2f%%" % (mw.test_scores[1]*100))
 
     # pu.plot_network_history(mw.network_history, "categorical_accuracy", "val_categorical_accuracy")
     # plt.show()
 
     print("\nConfusion Matrix")
-    print(mw.confusion_matrix)
+    print(mw.test_confusion_matrix)
 
     print("\nClassification Report")
-    print(mw.classification_report)
+    print(mw.test_classification_report)
 
     # fig = plt.figure(figsize=(5,5))
     # pu.plot_roc_auc(mw.model_name, mw.roc_auc, mw.fpr, mw.tpr)
 
-    custom_score = ru.calculate_metric(mw.crd)
+    custom_score = ru.calculate_metric(mw.test_crd)
     print(f'Custom Score: {custom_score}')
 
     """**Save off various files**"""
