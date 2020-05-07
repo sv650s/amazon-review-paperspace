@@ -17,6 +17,7 @@ usage() {
     echo "  -e epochs:                  max number of epochs for training. Default 20"
     echo "  -l log_level:               log level for logging. Default INFO"
     echo "  -m machine_type:            Gradient machine type. Options C3 (CPU) or P4000 (GPU). Default P4000"
+    echo "  -n enable_bidirectional:    Enable bidirectional network. Default False"
     echo "  -p patience:                patience for early stopping. Default 4"
     echo "  -r recurrent_dropout_rate:  recurrent dropout rate for LSTM cells. Default 0"
     echo "Example:"
@@ -32,7 +33,8 @@ fi
 
 
 MACHINE_TYPE="P4000"
-while getopts :b:c:d:e:l:m:p:r: o
+BIDIRECTIONAL_OPT=
+while getopts :b:c:d:e:l:m:np:r: o
    do
      case $o in
         b) BATCH_SIZE="$OPTARG" ;;
@@ -41,6 +43,7 @@ while getopts :b:c:d:e:l:m:p:r: o
         e) EPOCHS="$OPTARG" ;;
         l) LOG_LEVEL="$OPTARG" ;;
         m) MACHINE_TYPE="$OPTARG" ;;
+        n) BIDIRECTIONAL_OPT=" -n ";;
         p) PATIENCE="$OPTARG" ;;
         r) RECURRENT_DROPOUT_RATE="$OPTARG" ;;
         *) usage && exit 0 ;;                     # display usage and exit
@@ -94,14 +97,14 @@ fi
 
 
 echo "Running python with following command"
-echo "python train/train.py -i /storage -o /artifacts -s ${sample_size} ${BATCH_SIZE_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT}" \
+echo "python train/train.py -i /storage -o /artifacts ${BATCH_SIZE_OPT} ${BIDIRECTIONAL_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT} ${sample_size}" \
 
 gradient experiments run singlenode \
     --name with_stop_nonlemmatized-${sample_size} \
     --projectId pr1cl53bg \
     --machineType ${MACHINE_TYPE} \
     --container vtluk/paperspace-tf-gpu:1.0 \
-    --command "python train/train.py -i /storage -o /artifacts ${BATCH_SIZE_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT} ${sample_size}" \
+    --command "python train/train.py -i /storage -o /artifacts ${BATCH_SIZE_OPT} ${BIDIRECTIONAL_OPT} ${LSTM_CELLS_OPT} ${DROPOUT_RATE_OPT} ${EPOCHS_OPT} ${LOG_LEVEL_OPT} ${PATIENCE_OPT} ${RECURRENT_DROPOUT_RATE_OPT} ${sample_size}" \
     --workspace .
 
 
